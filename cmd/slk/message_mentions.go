@@ -8,23 +8,23 @@ import (
 	"github.com/gammons/slk/internal/ui/messages"
 )
 
-// messageUserResolver uses the message's source workspace, never the workspace
+// messageResolvers uses the message's source workspace, never the workspace
 // that happens to be active when a background fetch or cache read completes.
-func messageUserResolver(router *workspaceRouter, teamID string) *userResolver {
+func messageResolvers(router *workspaceRouter, teamID string) (*userResolver, *channelResolver) {
 	if router != nil {
 		if wctx := router.ByID(teamID); wctx != nil {
-			return wctx.UserResolver
+			return wctx.UserResolver, wctx.ChannelResolver
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // resolveMessageMentions hydrates names from local caches and queues misses
-// without waiting for profiles. Follow MessageLinks' visible mrkdwn lanes:
-// hidden fallback text, plain labels and attachment rich text are not rendered
-// as mentions. The existing store/resolver notifications refresh the UI.
-func resolveMessageMentions(msg core.MessageItem, names *userNameStore, db *cache.DB, resolver *userResolver) {
-	var seen map[string]struct{}
+// without waiting for profiles or channel metadata. Follow MessageLinks' visible
+// mrkdwn lanes: hidden fallback text, plain labels and attachment rich text are
+// not rendered as mentions. Store notifications refresh the UI.
+func resolveMessageMentions(msg core.MessageItem, names *userNameStore, db *cache.DB, resolver *userResolver, channels *channelResolver) {
+	var seen, seenChannels map[string]struct{}
 	resolveText := func(text string) {
 		if text == "" {
 			return
@@ -39,6 +39,21 @@ func resolveMessageMentions(msg core.MessageItem, names *userNameStore, db *cach
 			seen[id] = struct{}{}
 			if _, ok := resolveUserCached(id, names, db); !ok && resolver != nil {
 				resolver.Request(id)
+			}
+		}
+		if channels != nil {
+			for _, mention := range slackfmt.MentionedChannels(text) {
+				if mention.Label != "" {
+					continue
+				}
+				if _, ok := seenChannels[mention.ID]; ok {
+					continue
+				}
+				if seenChannels == nil {
+					seenChannels = make(map[string]struct{})
+				}
+				seenChannels[mention.ID] = struct{}{}
+				channels.Request(mention.ID)
 			}
 		}
 	}

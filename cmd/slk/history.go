@@ -68,7 +68,7 @@ func fetchMessagesAround(client *slackclient.Client, channelID, targetTS string,
 // throughout slk.
 func convertAndCacheHistory(client *slackclient.Client, channelID string, history []slack.Message, db *cache.DB, userNames *userNameStore, tsFormat string, router *workspaceRouter) []messages.MessageItem {
 	var msgItems []messages.MessageItem
-	resolver := messageUserResolver(router, client.TeamID())
+	resolver, channels := messageResolvers(router, client.TeamID())
 	for _, m := range history {
 		rawBytes, _ := json.Marshal(m)
 		debuglog.Cache("convertAndCacheHistory: upsert channel=%s ts=%s subtype=%q reply_count=%d files=%d",
@@ -121,7 +121,7 @@ func convertAndCacheHistory(client *slackclient.Client, channelID string, histor
 			Blocks:            extractBlocks(m.Blocks),
 			LegacyAttachments: extractLegacyAttachments(m.Attachments),
 		}
-		resolveMessageMentions(item, userNames, db, resolver)
+		resolveMessageMentions(item, userNames, db, resolver, channels)
 		msgItems = append(msgItems, item)
 	}
 
@@ -411,7 +411,8 @@ func enrichCachedRow(
 		Blocks:            blocks,
 		LegacyAttachments: legacy,
 	}
-	resolveMessageMentions(item, userNames, db, messageUserResolver(router, m.WorkspaceID))
+	resolver, channels := messageResolvers(router, m.WorkspaceID)
+	resolveMessageMentions(item, userNames, db, resolver, channels)
 	return item
 }
 
@@ -481,7 +482,7 @@ func fetchChannelMessages(client *slackclient.Client, channelID string, db *cach
 	}
 
 	msgItems := make([]messages.MessageItem, 0, len(history))
-	resolver := messageUserResolver(router, client.TeamID())
+	resolver, channels := messageResolvers(router, client.TeamID())
 	for _, m := range history {
 		rawBytes, _ := json.Marshal(m)
 		debuglog.Cache("fetchChannelMessages: upsert channel=%s ts=%s subtype=%q reply_count=%d files=%d",
@@ -534,7 +535,7 @@ func fetchChannelMessages(client *slackclient.Client, channelID string, db *cach
 			Blocks:            extractBlocks(m.Blocks),
 			LegacyAttachments: extractLegacyAttachments(m.Attachments),
 		}
-		resolveMessageMentions(item, userNames, db, resolver)
+		resolveMessageMentions(item, userNames, db, resolver, channels)
 		msgItems = append(msgItems, item)
 	}
 
@@ -583,7 +584,7 @@ func fetchThreadReplies(client *slackclient.Client, channelID, threadTS string, 
 	}
 
 	msgItems := make([]messages.MessageItem, 0, len(history))
-	resolver := messageUserResolver(router, client.TeamID())
+	resolver, channels := messageResolvers(router, client.TeamID())
 	for _, m := range history {
 		rawBytes, _ := json.Marshal(m)
 		debuglog.Cache("fetchThreadReplies: upsert channel=%s ts=%s subtype=%q reply_count=%d files=%d",
@@ -636,7 +637,7 @@ func fetchThreadReplies(client *slackclient.Client, channelID, threadTS string, 
 			Blocks:            extractBlocks(m.Blocks),
 			LegacyAttachments: extractLegacyAttachments(m.Attachments),
 		}
-		resolveMessageMentions(item, userNames, db, resolver)
+		resolveMessageMentions(item, userNames, db, resolver, channels)
 		msgItems = append(msgItems, item)
 	}
 
